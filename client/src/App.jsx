@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import { Routes, Route, Link, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
-import { Typography, Button, Paper, TextField, MenuItem, Chip, Alert, Stack, Grid } from "@mui/material";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  Typography, Button, Paper, TextField, MenuItem,
+  Card, CardContent, Chip, Alert, Stack, Grid, LinearProgress
+} from "@mui/material";
 import api from "./api";
 
 function useUser() {
@@ -73,10 +76,28 @@ function Home() {
   </div>;
 }
 
+function JobsPage() {
+  const [search, setSearch] = useState("");
+  const jobs = useQuery({ queryKey:["jobs",search], queryFn: async () => (await api.get("/jobs", {params:{search}})).data });
+  return <div className="page">
+    <div className="row"><div><Typography variant="h4">Explore opportunities</Typography><Typography color="text.secondary">Find a role that matches your skills.</Typography></div><TextField size="small" placeholder="Search jobs or skills" value={search} onChange={e=>setSearch(e.target.value)} /></div>
+    {jobs.isLoading ? <LinearProgress sx={{mt:3}}/> : <div className="grid" style={{marginTop:24}}>
+      {jobs.data?.map(job=><Card key={job._id}><CardContent>
+        <Chip size="small" label={job.type || "Full-time"} color="primary" variant="outlined"/>
+        <Typography variant="h6" sx={{mt:2}}>{job.title}</Typography><Typography color="text.secondary">{job.company} · {job.location}</Typography>
+        <Typography sx={{my:2}} color="text.secondary">{job.description.slice(0,150)}{job.description.length>150?"…":""}</Typography>
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{job.skills?.slice(0,5).map(s=><Chip key={s} size="small" label={s}/>)}</Stack>
+      </CardContent></Card>)}
+      {!jobs.data?.length && <Typography color="text.secondary">No active jobs found.</Typography>}
+    </div>}
+  </div>;
+}
+
 export default function App() {
   const [user, saveUser] = useUser();
   return <><Nav user={user} logout={() => saveUser(null)} /><Routes>
     <Route path="/" element={<Home />} />
+    <Route path="/jobs" element={<JobsPage user={user} />} />
     <Route path="/login" element={<AuthPage mode="login" saveUser={saveUser} />} />
     <Route path="/register" element={<AuthPage mode="register" saveUser={saveUser} />} />
     <Route path="*" element={<div className="page"><Typography>Page not found.</Typography></div>} />
