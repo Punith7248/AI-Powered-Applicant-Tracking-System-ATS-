@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { Routes, Route, Link, useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Typography, Button, Paper, TextField, MenuItem,
-  Card, CardContent, Chip, Alert, Stack, Grid, LinearProgress
+  Card, CardContent, Chip, Alert, Stack, Grid, Dialog, DialogTitle,
+  DialogContent, DialogActions, LinearProgress
 } from "@mui/material";
 import api from "./api";
 
@@ -76,20 +77,36 @@ function Home() {
   </div>;
 }
 
-function JobsPage() {
+function JobsPage({ user }) {
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [file, setFile] = useState(null);
+  const [notice, setNotice] = useState("");
+  const qc = useQueryClient();
   const jobs = useQuery({ queryKey:["jobs",search], queryFn: async () => (await api.get("/jobs", {params:{search}})).data });
+  const apply = useMutation({
+    mutationFn: async () => { const fd = new FormData(); fd.append("jobId", selected._id); fd.append("resume", file); return (await api.post("/applications", fd)).data; },
+    onSuccess: () => { setNotice("Application submitted successfully."); setSelected(null); setFile(null); qc.invalidateQueries({queryKey:["myApps"]}); },
+    onError: e => setNotice(e.response?.data?.message || "Application failed")
+  });
   return <div className="page">
     <div className="row"><div><Typography variant="h4">Explore opportunities</Typography><Typography color="text.secondary">Find a role that matches your skills.</Typography></div><TextField size="small" placeholder="Search jobs or skills" value={search} onChange={e=>setSearch(e.target.value)} /></div>
+    {notice && <Alert sx={{my:2}} severity={notice.includes("success")?"success":"info"} onClose={()=>setNotice("")}>{notice}</Alert>}
     {jobs.isLoading ? <LinearProgress sx={{mt:3}}/> : <div className="grid" style={{marginTop:24}}>
       {jobs.data?.map(job=><Card key={job._id}><CardContent>
         <Chip size="small" label={job.type || "Full-time"} color="primary" variant="outlined"/>
         <Typography variant="h6" sx={{mt:2}}>{job.title}</Typography><Typography color="text.secondary">{job.company} · {job.location}</Typography>
         <Typography sx={{my:2}} color="text.secondary">{job.description.slice(0,150)}{job.description.length>150?"…":""}</Typography>
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{job.skills?.slice(0,5).map(s=><Chip key={s} size="small" label={s}/>)}</Stack>
+        <Button sx={{mt:2}} variant="contained" disabled={!user || user.role!=="applicant"} onClick={()=>setSelected(job)}>{!user?"Login to apply":user.role!=="applicant"?"Applicant account required":"Apply now"}</Button>
       </CardContent></Card>)}
       {!jobs.data?.length && <Typography color="text.secondary">No active jobs found.</Typography>}
     </div>}
+    <Dialog open={!!selected} onClose={()=>setSelected(null)} fullWidth maxWidth="sm">
+      <DialogTitle>Apply for {selected?.title}</DialogTitle>
+      <DialogContent><Typography color="text.secondary" sx={{mb:2}}>Upload your resume in PDF or DOCX format (maximum 5 MB).</Typography><Button component="label" variant="outlined">Choose resume<input hidden type="file" accept=".pdf,.docx,application/pdf" onChange={e=>setFile(e.target.files?.[0] || null)}/></Button><Typography sx={{mt:1}} variant="body2">{file?.name || "No file selected"}</Typography></DialogContent>
+      <DialogActions><Button onClick={()=>setSelected(null)}>Cancel</Button><Button variant="contained" disabled={!file || apply.isPending} onClick={()=>apply.mutate()}>Submit application</Button></DialogActions>
+    </Dialog>
   </div>;
 }
 
