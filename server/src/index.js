@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/auth.js";
 import jobRoutes from "./routes/jobs.js";
+import applicationRoutes from "./routes/applications.js";
 
 dotenv.config();
 const app = express();
@@ -14,6 +15,7 @@ app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, limit: 300 }));
 app.get("/api/health", (req, res) => res.json({ status: "ok", service: "AI ATS API" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/jobs", jobRoutes);
+app.use("/api/applications", applicationRoutes);
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(err.status || 500).json({ message: err.message || "Server error" });
