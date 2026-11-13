@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Typography, Button, Paper, TextField, MenuItem,
-  Card, CardContent, Chip, Alert, Stack, Grid, Dialog, DialogTitle,
+  Card, CardContent, Chip, Alert, Stack, Grid, Divider, Dialog, DialogTitle,
   DialogContent, DialogActions, LinearProgress
 } from "@mui/material";
 import api from "./api";
@@ -110,6 +110,13 @@ function JobsPage({ user }) {
   </div>;
 }
 
+function MyApplications() {
+  const q=useQuery({queryKey:["myApps"],queryFn:async()=>(await api.get("/applications/mine")).data});
+  return <div className="page"><Typography variant="h4">My applications</Typography><Typography color="text.secondary" sx={{mb:3}}>Track the progress of your applications.</Typography>
+    <Stack spacing={2}>{q.data?.map(a=><Paper key={a._id} sx={{p:3}}><div className="row"><div><Typography variant="h6">{a.job?.title}</Typography><Typography color="text.secondary">{a.job?.company}</Typography></div><Chip label={a.status}/></div><Divider sx={{my:2}}/><div className="row"><div><Typography variant="body2" color="text.secondary">Resume match score</Typography><Typography className="score">{a.analysis?.score}%</Typography></div><div><Typography variant="body2" color="text.secondary">Submitted</Typography><Typography>{new Date(a.createdAt).toLocaleDateString()}</Typography></div></div><Typography sx={{mt:2}}>{a.analysis?.summary}</Typography><Typography variant="caption" color="text.secondary">AI analysis is decision support, not a hiring decision.</Typography></Paper>)}{q.isLoading&&<LinearProgress/>}{!q.data?.length&&!q.isLoading&&<Alert severity="info">You have not applied to any jobs yet.</Alert>}</Stack>
+  </div>;
+}
+
 export default function App() {
   const [user, saveUser] = useUser();
   return <><Nav user={user} logout={() => saveUser(null)} /><Routes>
@@ -117,6 +124,7 @@ export default function App() {
     <Route path="/jobs" element={<JobsPage user={user} />} />
     <Route path="/login" element={<AuthPage mode="login" saveUser={saveUser} />} />
     <Route path="/register" element={<AuthPage mode="register" saveUser={saveUser} />} />
+    <Route path="/applications" element={user?.role === "applicant" ? <MyApplications /> : <div className="page"><Alert severity="warning">Login with an applicant account to view this page.</Alert></div>} />
     <Route path="*" element={<div className="page"><Typography>Page not found.</Typography></div>} />
   </Routes></>;
 }
