@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Typography, Button, Paper, TextField, MenuItem,
   Card, CardContent, Chip, Alert, Stack, Grid, Divider, Dialog, DialogTitle,
-  DialogContent, DialogActions, LinearProgress
+  DialogContent, DialogActions, LinearProgress, Tabs, Tab
 } from "@mui/material";
 import api from "./api";
 
@@ -110,6 +110,35 @@ function JobsPage({ user }) {
   </div>;
 }
 
+function RecruiterDashboard() {
+  const qc = useQueryClient();
+  const [tab,setTab] = useState(0);
+  const [open,setOpen] = useState(false);
+  const [form,setForm] = useState({title:"",company:"",location:"Bengaluru / Remote",type:"Full-time",experience:"0-2 years",skills:"JavaScript, React, Node.js",description:""});
+  const [error,setError] = useState("");
+  const jobs = useQuery({queryKey:["myJobs"],queryFn:async()=>(await api.get("/jobs/mine")).data});
+  const apps = useQuery({queryKey:["recruiterApps"],queryFn:async()=>(await api.get("/applications/recruiter")).data});
+  const create = useMutation({mutationFn:async()=>(await api.post("/jobs",form)).data,onSuccess:()=>{setOpen(false);qc.invalidateQueries({queryKey:["myJobs"]});},onError:e=>setError(e.response?.data?.message||"Could not create job")});
+  const archive = useMutation({mutationFn:async(id)=>(await api.patch(`/jobs/${id}/archive`)).data,onSuccess:()=>qc.invalidateQueries({queryKey:["myJobs"]})});
+  const change = key => e => setForm({...form,[key]:e.target.value});
+  return <div className="page">
+    <div className="row"><div><Typography variant="h4">Recruiter workspace</Typography><Typography color="text.secondary">Manage openings and review your talent pipeline.</Typography></div><Button variant="contained" onClick={()=>setOpen(true)}>+ Create job</Button></div>
+    <Grid container spacing={2} sx={{my:2}}>
+      {[["Open jobs",jobs.data?.filter(j=>!j.archived).length||0],["Applications",apps.data?.length||0],["Interview stage",apps.data?.filter(a=>a.status==="Interview").length||0],["Offers",apps.data?.filter(a=>a.status==="Offered").length||0]].map(x=><Grid item xs={6} md={3} key={x[0]}><Paper sx={{p:2}}><Typography color="text.secondary" variant="body2">{x[0]}</Typography><Typography variant="h4">{x[1]}</Typography></Paper></Grid>)}
+    </Grid>
+    <Paper sx={{p:2}}>
+      <Tabs value={tab} onChange={(e,v)=>setTab(v)}><Tab label="Job listings"/></Tabs>
+      <Stack spacing={1} sx={{mt:2}}>{jobs.data?.map(job=><Paper variant="outlined" sx={{p:2}} key={job._id}><div className="row"><div><Typography fontWeight={700}>{job.title}</Typography><Typography variant="body2" color="text.secondary">{job.company} · {job.location} · {job.skills?.join(", ")}</Typography></div><Stack direction="row" spacing={1}><Chip label={job.archived?"Archived":"Published"} color={job.archived?"default":"success"}/>{!job.archived&&<Button color="error" onClick={()=>archive.mutate(job._id)}>Archive</Button>}</Stack></div></Paper>)}{!jobs.data?.length&&<Typography color="text.secondary">No jobs posted yet.</Typography>}</Stack>
+    </Paper>
+    <Dialog open={open} onClose={()=>setOpen(false)} fullWidth maxWidth="md"><DialogTitle>Create a job opening</DialogTitle><DialogContent><Grid container spacing={2} sx={{mt:.2}}>
+      {[
+        ["title","Job title"],["company","Company"],["location","Location"],["type","Employment type"],["experience","Experience"],["skills","Required skills (comma separated)"]
+      ].map(([key,label])=><Grid item xs={12} sm={6} key={key}><TextField fullWidth label={label} value={form[key]} onChange={change(key)}/></Grid>)}
+      <Grid item xs={12}><TextField fullWidth multiline minRows={5} label="Job description" value={form.description} onChange={change("description")}/></Grid>
+    </Grid>{error&&<Alert severity="error" sx={{mt:2}}>{error}</Alert>}</DialogContent><DialogActions><Button onClick={()=>setOpen(false)}>Cancel</Button><Button variant="contained" disabled={create.isPending} onClick={()=>create.mutate()}>Publish job</Button></DialogActions></Dialog>
+  </div>;
+}
+
 function MyApplications() {
   const q=useQuery({queryKey:["myApps"],queryFn:async()=>(await api.get("/applications/mine")).data});
   return <div className="page"><Typography variant="h4">My applications</Typography><Typography color="text.secondary" sx={{mb:3}}>Track the progress of your applications.</Typography>
@@ -124,6 +153,7 @@ export default function App() {
     <Route path="/jobs" element={<JobsPage user={user} />} />
     <Route path="/login" element={<AuthPage mode="login" saveUser={saveUser} />} />
     <Route path="/register" element={<AuthPage mode="register" saveUser={saveUser} />} />
+    <Route path="/dashboard" element={user?.role === "recruiter" ? <RecruiterDashboard /> : <div className="page"><Alert severity="warning">Login with a recruiter account to view this page.</Alert></div>} />
     <Route path="/applications" element={user?.role === "applicant" ? <MyApplications /> : <div className="page"><Alert severity="warning">Login with an applicant account to view this page.</Alert></div>} />
     <Route path="*" element={<div className="page"><Typography>Page not found.</Typography></div>} />
   </Routes></>;
