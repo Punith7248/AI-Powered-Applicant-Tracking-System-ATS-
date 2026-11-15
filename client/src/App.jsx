@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Routes, Route, Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Typography, Button, Paper, TextField, MenuItem,
+  AppBar, Toolbar, Typography, Button, Box, Container, Paper, TextField, MenuItem,
   Card, CardContent, Chip, Alert, Stack, Grid, Divider, Dialog, DialogTitle,
   DialogContent, DialogActions, LinearProgress, Tabs, Tab
 } from "@mui/material";
@@ -119,16 +119,29 @@ function RecruiterDashboard() {
   const jobs = useQuery({queryKey:["myJobs"],queryFn:async()=>(await api.get("/jobs/mine")).data});
   const apps = useQuery({queryKey:["recruiterApps"],queryFn:async()=>(await api.get("/applications/recruiter")).data});
   const create = useMutation({mutationFn:async()=>(await api.post("/jobs",form)).data,onSuccess:()=>{setOpen(false);qc.invalidateQueries({queryKey:["myJobs"]});},onError:e=>setError(e.response?.data?.message||"Could not create job")});
+  const updateStatus = useMutation({mutationFn:async({id,status})=>(await api.patch(`/applications/${id}/status`,{status})).data,onSuccess:()=>qc.invalidateQueries({queryKey:["recruiterApps"]})});
   const archive = useMutation({mutationFn:async(id)=>(await api.patch(`/jobs/${id}/archive`)).data,onSuccess:()=>qc.invalidateQueries({queryKey:["myJobs"]})});
   const change = key => e => setForm({...form,[key]:e.target.value});
+  const statuses = ["Applied","Interview","Offered","Rejected"];
   return <div className="page">
     <div className="row"><div><Typography variant="h4">Recruiter workspace</Typography><Typography color="text.secondary">Manage openings and review your talent pipeline.</Typography></div><Button variant="contained" onClick={()=>setOpen(true)}>+ Create job</Button></div>
     <Grid container spacing={2} sx={{my:2}}>
       {[["Open jobs",jobs.data?.filter(j=>!j.archived).length||0],["Applications",apps.data?.length||0],["Interview stage",apps.data?.filter(a=>a.status==="Interview").length||0],["Offers",apps.data?.filter(a=>a.status==="Offered").length||0]].map(x=><Grid item xs={6} md={3} key={x[0]}><Paper sx={{p:2}}><Typography color="text.secondary" variant="body2">{x[0]}</Typography><Typography variant="h4">{x[1]}</Typography></Paper></Grid>)}
     </Grid>
     <Paper sx={{p:2}}>
-      <Tabs value={tab} onChange={(e,v)=>setTab(v)}><Tab label="Job listings"/></Tabs>
-      <Stack spacing={1} sx={{mt:2}}>{jobs.data?.map(job=><Paper variant="outlined" sx={{p:2}} key={job._id}><div className="row"><div><Typography fontWeight={700}>{job.title}</Typography><Typography variant="body2" color="text.secondary">{job.company} · {job.location} · {job.skills?.join(", ")}</Typography></div><Stack direction="row" spacing={1}><Chip label={job.archived?"Archived":"Published"} color={job.archived?"default":"success"}/>{!job.archived&&<Button color="error" onClick={()=>archive.mutate(job._id)}>Archive</Button>}</Stack></div></Paper>)}{!jobs.data?.length&&<Typography color="text.secondary">No jobs posted yet.</Typography>}</Stack>
+      <Tabs value={tab} onChange={(e,v)=>setTab(v)}><Tab label="Job listings"/><Tab label="Candidate pipeline"/></Tabs>
+      {tab===0 ? <Stack spacing={1} sx={{mt:2}}>{jobs.data?.map(job=><Paper variant="outlined" sx={{p:2}} key={job._id}><div className="row"><div><Typography fontWeight={700}>{job.title}</Typography><Typography variant="body2" color="text.secondary">{job.company} · {job.location} · {job.skills?.join(", ")}</Typography></div><Stack direction="row" spacing={1}><Chip label={job.archived?"Archived":"Published"} color={job.archived?"default":"success"}/>{!job.archived&&<Button color="error" onClick={()=>archive.mutate(job._id)}>Archive</Button>}</Stack></div></Paper>)}{!jobs.data?.length&&<Typography color="text.secondary">No jobs posted yet.</Typography>}</Stack> :
+      <Box sx={{overflowX:"auto",mt:2}}><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(190px,1fr))",gap:12,minWidth:780}}>
+        {statuses.map(status=><Paper key={status} sx={{p:1.5,minHeight:240,background:"#f8fafc"}}><Typography fontWeight={800} sx={{mb:1}}>{status} · {apps.data?.filter(a=>a.status===status).length||0}</Typography>
+          <Stack spacing={1}>{apps.data?.filter(a=>a.status===status).map(app=><Paper key={app._id} sx={{p:1.5}} elevation={1}>
+            <Typography fontWeight={700}>{app.applicant?.name}</Typography><Typography variant="caption" color="text.secondary">{app.job?.title}</Typography>
+            <Typography className="score">{app.analysis?.score}%</Typography><Typography variant="caption" color="text.secondary">AI match score · {app.analysis?.source}</Typography>
+            <Typography variant="caption" display="block" sx={{mt:1}}>Matched: {app.analysis?.matchedSkills?.join(", ")||"—"}</Typography>
+            <TextField select size="small" fullWidth sx={{mt:1}} value={app.status} onChange={e=>updateStatus.mutate({id:app._id,status:e.target.value})}>{statuses.map(s=><MenuItem key={s} value={s}>{s}</MenuItem>)}</TextField>
+            <Button size="small" component="a" href={`${import.meta.env.VITE_API_URL||"http://localhost:5000/api"}/applications/${app._id}/download`} onClick={async e=>{e.preventDefault();try{const r=await api.get(`/applications/${app._id}/download`,{responseType:"blob"});const u=URL.createObjectURL(r.data);const a=document.createElement("a");a.href=u;a.download=app.resume?.originalName||"resume";a.click();URL.revokeObjectURL(u);}catch{alert("Could not download resume")}}}>Download resume</Button>
+          </Paper>)}</Stack>
+        </Paper>)}
+      </div></Box>}
     </Paper>
     <Dialog open={open} onClose={()=>setOpen(false)} fullWidth maxWidth="md"><DialogTitle>Create a job opening</DialogTitle><DialogContent><Grid container spacing={2} sx={{mt:.2}}>
       {[
@@ -147,14 +160,14 @@ function MyApplications() {
 }
 
 export default function App() {
-  const [user, saveUser] = useUser();
-  return <><Nav user={user} logout={() => saveUser(null)} /><Routes>
-    <Route path="/" element={<Home />} />
-    <Route path="/jobs" element={<JobsPage user={user} />} />
-    <Route path="/login" element={<AuthPage mode="login" saveUser={saveUser} />} />
-    <Route path="/register" element={<AuthPage mode="register" saveUser={saveUser} />} />
-    <Route path="/dashboard" element={user?.role === "recruiter" ? <RecruiterDashboard /> : <div className="page"><Alert severity="warning">Login with a recruiter account to view this page.</Alert></div>} />
-    <Route path="/applications" element={user?.role === "applicant" ? <MyApplications /> : <div className="page"><Alert severity="warning">Login with an applicant account to view this page.</Alert></div>} />
-    <Route path="*" element={<div className="page"><Typography>Page not found.</Typography></div>} />
-  </Routes></>;
+  const [user,saveUser]=useUser();
+  return <><Nav user={user} logout={()=>saveUser(null)}/><Routes>
+    <Route path="/" element={<Home/>}/>
+    <Route path="/jobs" element={<JobsPage user={user}/>}/>
+    <Route path="/login" element={<AuthPage mode="login" saveUser={saveUser}/>}/>
+    <Route path="/register" element={<AuthPage mode="register" saveUser={saveUser}/>}/>
+    <Route path="/dashboard" element={user?.role==="recruiter"?<RecruiterDashboard/>:<div className="page"><Alert severity="warning">Login with a recruiter account to view this page.</Alert></div>}/>
+    <Route path="/applications" element={user?.role==="applicant"?<MyApplications/>:<div className="page"><Alert severity="warning">Login with an applicant account to view this page.</Alert></div>}/>
+    <Route path="*" element={<div className="page"><Typography>Page not found.</Typography></div>}/>
+  </Routes><footer style={{textAlign:"center",padding:"25px",color:"#64748b"}}>TalentFlow ATS · AI-assisted recruitment workspace</footer></>;
 }
